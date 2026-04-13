@@ -65,11 +65,15 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
   return result;
 }
 
-export function MaskAvatar(props: { avatar: string; model?: ModelType }) {
+export function MaskAvatar(props: {
+  avatar: string;
+  model?: ModelType;
+  size?: number;
+}) {
   return props.avatar !== DEFAULT_MASK_AVATAR ? (
-    <Avatar avatar={props.avatar} />
+    <Avatar avatar={props.avatar} size={props.size} />
   ) : (
-    <Avatar model={props.model} />
+    <Avatar model={props.model} size={props.size} />
   );
 }
 

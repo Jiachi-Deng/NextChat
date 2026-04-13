@@ -14,7 +14,7 @@ import BrainIcon from "../icons/brain.svg";
 import RenameIcon from "../icons/rename.svg";
 import EditIcon from "../icons/rename.svg";
 import ExportIcon from "../icons/share.svg";
-import ReturnIcon from "../icons/return.svg";
+import ArrowIcon from "../icons/arrow.svg";
 import CopyIcon from "../icons/copy.svg";
 import SpeakIcon from "../icons/speak.svg";
 import SpeakStopIcon from "../icons/speak-stop.svg";
@@ -108,7 +108,7 @@ import {
   ServiceProvider,
   UNFINISHED_INPUT,
 } from "../constant";
-import { Avatar } from "./emoji";
+import { Avatar, AvatarPicker } from "./emoji";
 import { ContextPrompts, MaskAvatar, MaskConfig } from "./mask";
 import { useMaskStore } from "../store/mask";
 import { ChatCommandPrefix, useChatCommand, useCommand } from "../command";
@@ -986,6 +986,231 @@ export function ShortcutKeyModal(props: { onClose: () => void }) {
   );
 }
 
+function getMaskPromptSummary(messages: ChatMessage[]) {
+  const raw = messages
+    .map((message) => getMessageTextContent(message).trim())
+    .find((text) => text.length > 0);
+
+  if (!raw) {
+    return "No prompt summary available.";
+  }
+
+  const firstParagraph =
+    raw
+      .split(/\n\s*\n/)
+      .map((part) => part.replace(/\s+/g, " ").trim())
+      .find((part) => part.length > 0) ?? raw.replace(/\s+/g, " ").trim();
+
+  if (firstParagraph.length <= 160) {
+    return firstParagraph;
+  }
+
+  return `${firstParagraph.slice(0, 157).trimEnd()}...`;
+}
+
+function isAssistantPreTextState(message?: ChatMessage & { preview?: boolean }) {
+  if (!message || message.isError) return false;
+  if (!(message.preview || message.streaming)) return false;
+
+  const content = getMessageTextContent(message).trim();
+  return content.length === 0 || content === "……" || content === "..." || content === "…";
+}
+
+function pickAvatarImageDataUrl() {
+  return new Promise<string | null>((resolve, reject) => {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept =
+      "image/png, image/jpeg, image/webp, image/heic, image/heif, image/gif";
+
+    fileInput.onchange = (event: any) => {
+      const file = event.target.files?.[0];
+
+      if (!file) {
+        resolve(null);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e: any) => {
+        resolve(e.target?.result ?? null);
+      };
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    };
+
+    fileInput.click();
+  });
+}
+
+function MobileChatTypingDots() {
+  return (
+    <span className={styles["mobile-chat-toolbar-typing-dots"]} aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
+function MobileChatToolbar(props: {
+  title: string;
+  status: "online" | "typing";
+  avatar: React.ReactNode;
+  onBack: () => void;
+  onOpenProfile: () => void;
+}) {
+  return (
+    <div className={styles["mobile-chat-toolbar"]}>
+      <div className={styles["mobile-chat-toolbar-row"]}>
+        <div className={styles["mobile-chat-toolbar-side"]}>
+          <button
+            type="button"
+            className={styles["mobile-chat-toolbar-button"]}
+            aria-label={Locale.Chat.Actions.ChatList}
+            onClick={props.onBack}
+          >
+            <ArrowIcon className={styles["mobile-chat-toolbar-back-icon"]} />
+          </button>
+        </div>
+
+        <div className={styles["mobile-chat-toolbar-pill"]}>
+          <div className={styles["mobile-chat-toolbar-title"]}>{props.title}</div>
+          <div className={styles["mobile-chat-toolbar-subtitle"]}>
+            <span>{props.status}</span>
+            {props.status === "typing" && <MobileChatTypingDots />}
+          </div>
+        </div>
+
+        <div className={clsx(styles["mobile-chat-toolbar-side"], styles["mobile-chat-toolbar-side-trailing"])}>
+          <button
+            type="button"
+            className={styles["mobile-chat-toolbar-avatar-button"]}
+            aria-label={props.title}
+            onClick={props.onOpenProfile}
+          >
+            {props.avatar}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileChatProfileAction(props: {
+  label: string;
+  icon: JSX.Element;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={styles["mobile-chat-profile-action"]}
+      onClick={props.onClick}
+    >
+      <span className={styles["mobile-chat-profile-action-icon"]}>{props.icon}</span>
+      <span className={styles["mobile-chat-profile-action-label"]}>{props.label}</span>
+    </button>
+  );
+}
+
+function MobileChatProfilePanel(props: {
+  title: string;
+  model: string;
+  summary: string;
+  avatar: React.ReactNode;
+  avatarEditorOpen: boolean;
+  onClose: () => void;
+  onToggleAvatarEditor: () => void;
+  onUploadAvatar: () => void;
+  onSelectEmoji: (emoji: string) => void;
+  onRefresh: () => void;
+  onShare: () => void;
+  onRename: () => void;
+}) {
+  return (
+    <div className={styles["mobile-chat-profile"]}>
+      <div className={styles["mobile-chat-profile-topbar"]}>
+        <button
+          type="button"
+          className={styles["mobile-chat-toolbar-button"]}
+          aria-label={Locale.UI.Close}
+          onClick={props.onClose}
+        >
+          <ArrowIcon className={styles["mobile-chat-toolbar-back-icon"]} />
+        </button>
+      </div>
+
+      <div className={styles["mobile-chat-profile-body"]}>
+        <button
+          type="button"
+          className={styles["mobile-chat-profile-avatar"]}
+          onClick={props.onToggleAvatarEditor}
+          aria-label={Locale.Mask.Config.Avatar}
+        >
+          {props.avatar}
+        </button>
+        <div className={styles["mobile-chat-profile-name"]}>{props.title}</div>
+        <div className={styles["mobile-chat-profile-status"]}>online</div>
+
+        {props.avatarEditorOpen && (
+          <div className={styles["mobile-chat-profile-avatar-editor"]}>
+            <button
+              type="button"
+              className={styles["mobile-chat-profile-avatar-upload"]}
+              onClick={props.onUploadAvatar}
+            >
+              {Locale.Chat.InputActions.UploadImage}
+            </button>
+            <div className={styles["mobile-chat-profile-avatar-picker"]}>
+              <AvatarPicker onEmojiClick={props.onSelectEmoji} />
+            </div>
+          </div>
+        )}
+
+        <div className={styles["mobile-chat-profile-actions"]}>
+          <MobileChatProfileAction
+            label={Locale.Chat.Actions.RefreshTitle}
+            icon={<ReloadIcon />}
+            onClick={props.onRefresh}
+          />
+          <MobileChatProfileAction
+            label={Locale.Chat.Actions.Export}
+            icon={<ExportIcon />}
+            onClick={props.onShare}
+          />
+          <MobileChatProfileAction
+            label={Locale.Chat.Rename}
+            icon={<RenameIcon />}
+            onClick={props.onRename}
+          />
+        </div>
+
+        <div className={styles["mobile-chat-profile-card"]}>
+          <div className={styles["mobile-chat-profile-field"]}>
+            <div className={styles["mobile-chat-profile-field-label"]}>model</div>
+            <div className={styles["mobile-chat-profile-field-value"]}>
+              {props.model}
+            </div>
+          </div>
+
+          <div
+            className={clsx(
+              styles["mobile-chat-profile-field"],
+              styles["mobile-chat-profile-field-summary"],
+            )}
+          >
+            <div className={styles["mobile-chat-profile-field-label"]}>prompt</div>
+            <div className={styles["mobile-chat-profile-field-value"]}>
+              {props.summary}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function _Chat() {
   type RenderMessage = ChatMessage & { preview?: boolean };
 
@@ -1491,6 +1716,8 @@ function _Chat() {
 
   // edit / insert message modal
   const [isEditingMessage, setIsEditingMessage] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [showAvatarEditor, setShowAvatarEditor] = useState(false);
 
   // remember unfinished input
   useEffect(() => {
@@ -1678,96 +1905,157 @@ function _Chat() {
   }, [messages, chatStore, navigate, session]);
 
   const [showChatSidePanel, setShowChatSidePanel] = useState(false);
+  const mobileToolbarTitle = session.mask.name || (!session.topic ? DEFAULT_TOPIC : session.topic);
+  const mobileToolbarAvatar = (
+    <MaskAvatar
+      avatar={session.mask.avatar}
+      model={session.mask.modelConfig.model}
+      size={30}
+    />
+  );
+  const mobileProfileAvatar = (
+    <MaskAvatar
+      avatar={session.mask.avatar}
+      model={session.mask.modelConfig.model}
+      size={72}
+    />
+  );
+  const maskPromptSummary = useMemo(
+    () => getMaskPromptSummary(session.mask.context),
+    [session.mask.context],
+  );
+  const headerPendingAssistantMessage = useMemo(() => {
+    return [...renderMessages]
+      .reverse()
+      .find((message) => message.role === "assistant" && (message.preview || message.streaming));
+  }, [renderMessages]);
+  const showMobileHeaderTyping = useMemo(
+    () => isAssistantPreTextState(headerPendingAssistantMessage),
+    [headerPendingAssistantMessage],
+  );
+
+  const openExportModal = useCallback(() => {
+    setShowExport(true);
+  }, []);
+
+  const refreshSessionTitle = useCallback(() => {
+    showToast(Locale.Chat.Actions.RefreshToast);
+    chatStore.summarizeSession(true, session);
+  }, [chatStore, session]);
+
+  const openEditMessageModal = useCallback(() => {
+    setIsEditingMessage(true);
+  }, []);
+
+  const updateSessionAvatar = useCallback(
+    (avatar: string) => {
+      chatStore.updateTargetSession(session, (session) => {
+        session.mask.avatar = avatar;
+      });
+    },
+    [chatStore, session],
+  );
+
+  const uploadProfileAvatar = useCallback(async () => {
+    try {
+      const dataUrl = await pickAvatarImageDataUrl();
+      if (!dataUrl) return;
+      updateSessionAvatar(dataUrl);
+      setShowAvatarEditor(false);
+    } catch {
+      console.error("[MobileChatProfile] failed to update avatar");
+    }
+  }, [updateSessionAvatar]);
 
   return (
     <>
       <div className={styles.chat} key={session.id}>
-        <div className="window-header" data-tauri-drag-region>
-          {isMobileScreen && (
-            <div className="window-actions">
-              <div className={"window-action-button"}>
-                <IconButton
-                  icon={<ReturnIcon />}
-                  bordered
-                  title={Locale.Chat.Actions.ChatList}
-                  onClick={() => navigate(Path.Home)}
-                />
+        {isMobileScreen ? (
+          <div className={styles["mobile-chat-toolbar-shell"]}>
+            <MobileChatToolbar
+              title={mobileToolbarTitle}
+              status={showMobileHeaderTyping ? "typing" : "online"}
+              avatar={mobileToolbarAvatar}
+              onBack={() => navigate(Path.Home)}
+              onOpenProfile={() => {
+                setShowAvatarEditor(false);
+                setShowProfilePanel(true);
+              }}
+            />
+            <PromptToast
+              showToast={!hitBottom}
+              showModal={showPromptModal}
+              setShowModal={setShowPromptModal}
+            />
+          </div>
+        ) : (
+          <div className="window-header" data-tauri-drag-region>
+            <div
+              className={clsx("window-header-title", styles["chat-body-title"])}
+            >
+              <div
+                className={clsx(
+                  "window-header-main-title",
+                  styles["chat-body-main-title"],
+                )}
+                onClickCapture={openEditMessageModal}
+              >
+                {!session.topic ? DEFAULT_TOPIC : session.topic}
+              </div>
+              <div className="window-header-sub-title">
+                {Locale.Chat.SubTitle(session.messages.length)}
               </div>
             </div>
-          )}
-
-          <div
-            className={clsx("window-header-title", styles["chat-body-title"])}
-          >
-            <div
-              className={clsx(
-                "window-header-main-title",
-                styles["chat-body-main-title"],
-              )}
-              onClickCapture={() => setIsEditingMessage(true)}
-            >
-              {!session.topic ? DEFAULT_TOPIC : session.topic}
-            </div>
-            <div className="window-header-sub-title">
-              {Locale.Chat.SubTitle(session.messages.length)}
-            </div>
-          </div>
-          <div className="window-actions">
-            <div className="window-action-button">
-              <IconButton
-                icon={<ReloadIcon />}
-                bordered
-                title={Locale.Chat.Actions.RefreshTitle}
-                onClick={() => {
-                  showToast(Locale.Chat.Actions.RefreshToast);
-                  chatStore.summarizeSession(true, session);
-                }}
-              />
-            </div>
-            {!isMobileScreen && (
+            <div className="window-actions">
+              <div className="window-action-button">
+                <IconButton
+                  icon={<ReloadIcon />}
+                  bordered
+                  title={Locale.Chat.Actions.RefreshTitle}
+                  onClick={refreshSessionTitle}
+                />
+              </div>
               <div className="window-action-button">
                 <IconButton
                   icon={<RenameIcon />}
                   bordered
                   title={Locale.Chat.EditMessage.Title}
                   aria={Locale.Chat.EditMessage.Title}
-                  onClick={() => setIsEditingMessage(true)}
+                  onClick={openEditMessageModal}
                 />
               </div>
-            )}
-            <div className="window-action-button">
-              <IconButton
-                icon={<ExportIcon />}
-                bordered
-                title={Locale.Chat.Actions.Export}
-                onClick={() => {
-                  setShowExport(true);
-                }}
-              />
-            </div>
-            {showMaxIcon && (
               <div className="window-action-button">
                 <IconButton
-                  icon={config.tightBorder ? <MinIcon /> : <MaxIcon />}
+                  icon={<ExportIcon />}
                   bordered
-                  title={Locale.Chat.Actions.FullScreen}
-                  aria={Locale.Chat.Actions.FullScreen}
-                  onClick={() => {
-                    config.update(
-                      (config) => (config.tightBorder = !config.tightBorder),
-                    );
-                  }}
+                  title={Locale.Chat.Actions.Export}
+                  onClick={openExportModal}
                 />
               </div>
-            )}
-          </div>
+              {showMaxIcon && (
+                <div className="window-action-button">
+                  <IconButton
+                    icon={config.tightBorder ? <MinIcon /> : <MaxIcon />}
+                    bordered
+                    title={Locale.Chat.Actions.FullScreen}
+                    aria={Locale.Chat.Actions.FullScreen}
+                    onClick={() => {
+                      config.update(
+                        (config) => (config.tightBorder = !config.tightBorder),
+                      );
+                    }}
+                  />
+                </div>
+              )}
+            </div>
 
-          <PromptToast
-            showToast={!hitBottom}
-            showModal={showPromptModal}
-            setShowModal={setShowPromptModal}
-          />
-        </div>
+            <PromptToast
+              showToast={!hitBottom}
+              showModal={showPromptModal}
+              setShowModal={setShowPromptModal}
+            />
+          </div>
+        )}
         <div className={styles["chat-main"]}>
           <div className={styles["chat-body-container"]}>
             <div
@@ -2143,6 +2431,46 @@ function _Chat() {
               />
             )}
           </div>
+        </div>
+        <div
+          className={clsx(styles["mobile-chat-profile-shell"], {
+            [styles["mobile-chat-profile-shell-show"]]: showProfilePanel,
+          })}
+        >
+          <MobileChatProfilePanel
+            title={mobileToolbarTitle}
+            model={session.mask.modelConfig.model}
+            summary={maskPromptSummary}
+            avatar={mobileProfileAvatar}
+            avatarEditorOpen={showAvatarEditor}
+            onClose={() => {
+              setShowAvatarEditor(false);
+              setShowProfilePanel(false);
+            }}
+            onToggleAvatarEditor={() => {
+              setShowAvatarEditor((show) => !show);
+            }}
+            onUploadAvatar={uploadProfileAvatar}
+            onSelectEmoji={(emoji) => {
+              updateSessionAvatar(emoji);
+              setShowAvatarEditor(false);
+            }}
+            onRefresh={() => {
+              setShowAvatarEditor(false);
+              setShowProfilePanel(false);
+              refreshSessionTitle();
+            }}
+            onShare={() => {
+              setShowAvatarEditor(false);
+              setShowProfilePanel(false);
+              openExportModal();
+            }}
+            onRename={() => {
+              setShowAvatarEditor(false);
+              setShowProfilePanel(false);
+              openEditMessageModal();
+            }}
+          />
         </div>
       </div>
       {showExport && (
