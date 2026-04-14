@@ -538,6 +538,40 @@ const cn = {
         Title: "自定义模型名",
         SubTitle: "增加自定义模型可选项，使用英文逗号隔开",
       },
+      Status: {
+        Title: "当前状态",
+        DetailTitle: "接口状态详情",
+        Empty: "暂无主聊天请求记录",
+        Stable: "稳定",
+        Fair: "一般",
+        Unstable: "不稳定",
+        Unavailable: "不可用",
+        EntrySummary: (success: number, total: number, latency: string) =>
+          `最近 20 次成功 ${success}/${total}，平均首字 ${latency}`,
+        SourceTitle: "接口来源",
+        CurrentUrl: "当前 URL",
+        StabilityTitle: "最近稳定性",
+        RecentSuccess: (success: number, total: number) =>
+          `最近 20 次请求：${success} 次成功，共 ${total} 次`,
+        RecentFailuresItem: (code: string, count: number) =>
+          `最近 10 次：${count} 次 ${code}`,
+        RecentFailuresEmpty: "最近 10 次没有异常状态码",
+        AvgFirstToken: (latency: string) => `平均首字延迟：${latency}`,
+        SuggestionTitle: "建议",
+        NoSuggestion: "最近没有明显异常，可以继续观察",
+        Source: {
+          Official: "官方 API",
+          Proxy: "当前部署代理",
+          ThirdParty: "第三方中转站",
+        },
+        Suggestion: {
+          ThirdParty: "该接口疑似第三方中转，建议关闭流式",
+          Timeout: "该接口近期频繁超时，建议更换官方 API",
+          Model: "当前模型与该接口兼容性较差",
+          Auth: "API Key 可能无效、过期，或与当前接口不匹配",
+          NoData: "暂无主聊天请求记录，先发起一次正式对话后再看状态",
+        },
+      },
       AI302: {
         ApiKey: {
           Title: "接口密钥",

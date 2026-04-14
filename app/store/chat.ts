@@ -34,6 +34,11 @@ import { createPersistStore } from "../utils/store";
 import { estimateTokenLength } from "../utils/token";
 import { ModelConfig, ModelType, useAppConfig } from "./config";
 import { useAccessStore } from "./access";
+import {
+  getCurrentApiHealthUrl,
+  normalizeApiHealthErrorCode,
+  useApiHealthStore,
+} from "./api-health";
 import { collectModelsWithDefaultModel } from "../utils/model";
 import { createEmptyMask, Mask } from "./mask";
 import { executeMcpAction, getAllTools, isMcpEnabled } from "../mcp/actions";
@@ -457,11 +462,20 @@ export const useChatStore = createPersistStore(
         });
 
         const api: ClientApi = getClientApi(modelConfig.providerName);
+        const requestStartedAt = Date.now();
+        const apiHealthUrl = getCurrentApiHealthUrl(modelConfig.providerName);
+        const streamEnabled = modelConfig.enableStreaming ?? true;
+        let firstTokenLatencyMs: number | undefined;
+        let hasRecordedFirstToken = false;
         // make request
         api.llm.chat({
           messages: sendMessages,
-          config: { ...modelConfig, stream: modelConfig.enableStreaming ?? true },
+          config: { ...modelConfig, stream: streamEnabled },
           onUpdate(message) {
+            if (!hasRecordedFirstToken && message) {
+              firstTokenLatencyMs = Date.now() - requestStartedAt;
+              hasRecordedFirstToken = true;
+            }
             botMessage.streaming = true;
             if (message) {
               botMessage.content = message;
@@ -470,13 +484,28 @@ export const useChatStore = createPersistStore(
               session.messages = session.messages.concat();
             });
           },
-          async onFinish(message) {
+          async onFinish(message, responseRes) {
             botMessage.streaming = false;
+            const durationMs = Date.now() - requestStartedAt;
+            if (!hasRecordedFirstToken && message) {
+              firstTokenLatencyMs = durationMs;
+              hasRecordedFirstToken = true;
+            }
             if (message) {
               botMessage.content = message;
               botMessage.date = new Date().toLocaleString();
               get().onNewMessage(botMessage, session);
             }
+            useApiHealthStore.getState().record({
+              url: apiHealthUrl,
+              timestamp: Date.now(),
+              model: modelConfig.model,
+              stream: streamEnabled,
+              success: responseRes.ok,
+              durationMs,
+              firstTokenLatencyMs,
+              statusCode: responseRes.status,
+            });
             ChatControllerPool.remove(session.id, botMessage.id);
           },
           onBeforeTool(tool: ChatMessageTool) {
@@ -497,6 +526,7 @@ export const useChatStore = createPersistStore(
           },
           onError(error) {
             const isAborted = error.message?.includes?.("aborted");
+            const durationMs = Date.now() - requestStartedAt;
             botMessage.content +=
               "\n\n" +
               prettyObject({
@@ -513,6 +543,19 @@ export const useChatStore = createPersistStore(
               session.id,
               botMessage.id ?? messageIndex,
             );
+
+            if (!isAborted) {
+              useApiHealthStore.getState().record({
+                url: apiHealthUrl,
+                timestamp: Date.now(),
+                model: modelConfig.model,
+                stream: streamEnabled,
+                success: false,
+                durationMs,
+                firstTokenLatencyMs,
+                errorCode: normalizeApiHealthErrorCode(error.message ?? ""),
+              });
+            }
 
             console.error("[Chat] failed ", error);
           },

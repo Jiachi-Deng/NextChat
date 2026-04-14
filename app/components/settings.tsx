@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import clsx from "clsx";
 
 import styles from "./settings.module.scss";
 
@@ -38,6 +39,7 @@ import {
   SubmitKey,
   useChatStore,
   Theme,
+  useApiHealthStore,
   useUpdateStore,
   useAccessStore,
   useAppConfig,
@@ -89,6 +91,11 @@ import { useMaskStore } from "../store/mask";
 import { ProviderType } from "../utils/cloud";
 import { TTSConfigList } from "./tts-config";
 import { RealtimeConfigList } from "./realtime-chat/realtime-config";
+import {
+  ApiHealthStatus,
+  buildApiHealthSummary,
+  getCurrentApiHealthUrl,
+} from "../store/api-health";
 
 function EditPromptModal(props: { id: string; onClose: () => void }) {
   const promptStore = usePromptStore();
@@ -486,6 +493,156 @@ function SyncConfigModal(props: { onClose?: () => void }) {
   );
 }
 
+function formatApiHealthLatency(latencyMs?: number) {
+  if (typeof latencyMs !== "number") {
+    return "--";
+  }
+
+  if (latencyMs < 1000) {
+    return `${Math.round(latencyMs)}ms`;
+  }
+
+  return `${(latencyMs / 1000).toFixed(1)}s`;
+}
+
+function getApiHealthStatusLabel(status: ApiHealthStatus) {
+  switch (status) {
+    case "stable":
+      return Locale.Settings.Access.Status.Stable;
+    case "fair":
+      return Locale.Settings.Access.Status.Fair;
+    case "unstable":
+      return Locale.Settings.Access.Status.Unstable;
+    case "unavailable":
+    default:
+      return Locale.Settings.Access.Status.Unavailable;
+  }
+}
+
+function getApiHealthSourceLabel(source: "official" | "proxy" | "third-party") {
+  switch (source) {
+    case "official":
+      return Locale.Settings.Access.Status.Source.Official;
+    case "proxy":
+      return Locale.Settings.Access.Status.Source.Proxy;
+    case "third-party":
+    default:
+      return Locale.Settings.Access.Status.Source.ThirdParty;
+  }
+}
+
+function getApiHealthSuggestionLabels(summary: ReturnType<typeof buildApiHealthSummary>) {
+  if (summary.suggestions.length === 0) {
+    return [Locale.Settings.Access.Status.NoSuggestion];
+  }
+
+  return summary.suggestions.map((suggestion) => {
+    switch (suggestion) {
+      case "third-party-stream":
+        return Locale.Settings.Access.Status.Suggestion.ThirdParty;
+      case "timeout":
+        return Locale.Settings.Access.Status.Suggestion.Timeout;
+      case "model":
+        return Locale.Settings.Access.Status.Suggestion.Model;
+      case "auth":
+        return Locale.Settings.Access.Status.Suggestion.Auth;
+      case "no-data":
+      default:
+        return Locale.Settings.Access.Status.Suggestion.NoData;
+    }
+  });
+}
+
+function ApiHealthDetailsModal(props: {
+  summary: ReturnType<typeof buildApiHealthSummary>;
+  onClose: () => void;
+}) {
+  const failureSummary =
+    props.summary.recentFailures.length > 0
+      ? props.summary.recentFailures
+          .map((item) =>
+            Locale.Settings.Access.Status.RecentFailuresItem(
+              item.code,
+              item.count,
+            ),
+          )
+          .join(" ")
+      : Locale.Settings.Access.Status.RecentFailuresEmpty;
+  const suggestions = getApiHealthSuggestionLabels(props.summary);
+
+  return (
+    <div className="modal-mask">
+      <Modal
+        title={Locale.Settings.Access.Status.DetailTitle}
+        onClose={props.onClose}
+        actions={[
+          <IconButton
+            key="confirm"
+            onClick={props.onClose}
+            text={Locale.UI.Confirm}
+            bordered
+          />,
+        ]}
+      >
+        <div className={styles["api-health-modal"]}>
+          <div className={styles["api-health-section"]}>
+            <div className={styles["api-health-section-title"]}>
+              {Locale.Settings.Access.Status.SourceTitle}
+            </div>
+            <div className={styles["api-health-section-value"]}>
+              {getApiHealthSourceLabel(props.summary.source)}
+            </div>
+          </div>
+
+          <div className={styles["api-health-section"]}>
+            <div className={styles["api-health-section-title"]}>
+              {Locale.Settings.Access.Status.CurrentUrl}
+            </div>
+            <div className={styles["api-health-section-value"]}>
+              {props.summary.url || "--"}
+            </div>
+          </div>
+
+          <div className={styles["api-health-section"]}>
+            <div className={styles["api-health-section-title"]}>
+              {Locale.Settings.Access.Status.StabilityTitle}
+            </div>
+            <div className={styles["api-health-list"]}>
+              <div className={styles["api-health-list-item"]}>
+                {Locale.Settings.Access.Status.RecentSuccess(
+                  props.summary.successCount,
+                  props.summary.total,
+                )}
+              </div>
+              <div className={styles["api-health-list-item"]}>
+                {failureSummary}
+              </div>
+              <div className={styles["api-health-list-item"]}>
+                {Locale.Settings.Access.Status.AvgFirstToken(
+                  formatApiHealthLatency(props.summary.avgFirstTokenLatencyMs),
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className={styles["api-health-section"]}>
+            <div className={styles["api-health-section-title"]}>
+              {Locale.Settings.Access.Status.SuggestionTitle}
+            </div>
+            <div className={styles["api-health-list"]}>
+              {suggestions.map((suggestion) => (
+                <div key={suggestion} className={styles["api-health-list-item"]}>
+                  {suggestion}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 function SyncItems() {
   const syncStore = useSyncStore();
   const chatStore = useChatStore();
@@ -640,11 +797,32 @@ export function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+  useApiHealthStore();
 
   const promptStore = usePromptStore();
   const builtinCount = SearchService.count.builtin;
   const customCount = promptStore.getUserPrompts().length ?? 0;
   const [shouldShowPromptModal, setShowPromptModal] = useState(false);
+  const [showApiHealthModal, setShowApiHealthModal] = useState(false);
+
+  const currentHealthProvider =
+    (config.modelConfig.providerName as ServiceProvider) || accessStore.provider;
+  const currentApiHealthUrl = getCurrentApiHealthUrl(currentHealthProvider);
+  const apiHealthSummary = buildApiHealthSummary(
+    currentApiHealthUrl,
+    currentHealthProvider,
+    config.modelConfig.model,
+    config.modelConfig.enableStreaming ?? true,
+  );
+  const apiHealthStatusText = getApiHealthStatusLabel(apiHealthSummary.status);
+  const apiHealthEntrySubtitle =
+    apiHealthSummary.total > 0
+      ? Locale.Settings.Access.Status.EntrySummary(
+          apiHealthSummary.successCount,
+          apiHealthSummary.total,
+          formatApiHealthLatency(apiHealthSummary.avgFirstTokenLatencyMs),
+        )
+      : Locale.Settings.Access.Status.Empty;
 
   const showUsage = accessStore.isAuthorized();
   useEffect(() => {
@@ -1926,8 +2104,35 @@ export function Settings() {
           />
         </List>
 
+        <List>
+          <ListItem
+            title={Locale.Settings.Access.Status.Title}
+            subTitle={apiHealthEntrySubtitle}
+            className={styles["api-health-trigger"]}
+            onClick={() => setShowApiHealthModal(true)}
+          >
+            <div className={styles["api-health-pill"]}>
+              <span
+                className={clsx(
+                  styles["api-health-indicator"],
+                  styles[`api-health-indicator-${apiHealthSummary.status}`],
+                )}
+              >
+                {apiHealthSummary.status === "unavailable" ? "×" : ""}
+              </span>
+              <span>{apiHealthStatusText}</span>
+            </div>
+          </ListItem>
+        </List>
+
         {shouldShowPromptModal && (
           <UserPromptModal onClose={() => setShowPromptModal(false)} />
+        )}
+        {showApiHealthModal && (
+          <ApiHealthDetailsModal
+            summary={apiHealthSummary}
+            onClose={() => setShowApiHealthModal(false)}
+          />
         )}
         <List>
           <RealtimeConfigList

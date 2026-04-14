@@ -522,6 +522,40 @@ const en: LocaleType = {
         Title: "Custom Models",
         SubTitle: "Custom model options, seperated by comma",
       },
+      Status: {
+        Title: "Current Status",
+        DetailTitle: "API Health Details",
+        Empty: "No primary chat requests yet",
+        Stable: "Stable",
+        Fair: "Fair",
+        Unstable: "Unstable",
+        Unavailable: "Unavailable",
+        EntrySummary: (success: number, total: number, latency: string) =>
+          `Recent 20 requests: ${success}/${total} succeeded, first token ${latency}`,
+        SourceTitle: "Endpoint Source",
+        CurrentUrl: "Current URL",
+        StabilityTitle: "Recent Stability",
+        RecentSuccess: (success: number, total: number) =>
+          `Recent 20 requests: ${success} succeeded out of ${total}`,
+        RecentFailuresItem: (code: string, count: number) =>
+          `Recent 10 requests: ${count} x ${code}`,
+        RecentFailuresEmpty: "No abnormal status codes in the recent 10 requests",
+        AvgFirstToken: (latency: string) => `Average first-token latency: ${latency}`,
+        SuggestionTitle: "Suggestions",
+        NoSuggestion: "No obvious issues recently. Keep monitoring.",
+        Source: {
+          Official: "Official API",
+          Proxy: "Current deployment proxy",
+          ThirdParty: "Third-party relay",
+        },
+        Suggestion: {
+          ThirdParty: "This endpoint looks like a third-party relay. Consider disabling streaming.",
+          Timeout: "This endpoint has frequent timeouts recently. Consider switching to an official API.",
+          Model: "The current model may be poorly compatible with this endpoint.",
+          Auth: "The API key may be invalid, expired, or mismatched for this endpoint.",
+          NoData: "No primary chat requests yet. Send a real message first, then check again.",
+        },
+      },
       Google: {
         ApiKey: {
           Title: "API Key",
