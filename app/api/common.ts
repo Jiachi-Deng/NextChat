@@ -6,8 +6,84 @@ import { getModelProvider, isModelNotavailableInServer } from "../utils/model";
 
 const serverConfig = getServerSideConfig();
 
+function createRequestId() {
+  return (
+    globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)
+  );
+}
+
+function redactSecrets(text: string) {
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer ***")
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-***");
+}
+
+function truncateForLog(text: string, maxLength = 500) {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function getUpstreamHost(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+function getOpenAIRequestMeta(bodyText?: string) {
+  if (!bodyText) return {};
+
+  try {
+    const body = JSON.parse(bodyText) as {
+      model?: string;
+      stream?: boolean;
+      messages?: unknown[];
+      max_tokens?: number;
+      max_completion_tokens?: number;
+    };
+
+    return {
+      model: body.model,
+      stream: body.stream,
+      messageCount: Array.isArray(body.messages) ? body.messages.length : 0,
+      maxTokens: body.max_tokens ?? body.max_completion_tokens,
+    };
+  } catch {
+    return { parseError: true };
+  }
+}
+
+function getErrorSummary(text: string) {
+  const safeText = redactSecrets(text);
+
+  try {
+    const json = JSON.parse(safeText) as {
+      error?: string | { message?: string; type?: string; code?: string };
+      message?: string;
+      type?: string;
+      code?: string;
+    };
+    const error =
+      typeof json.error === "string"
+        ? json.error
+        : json.error?.message ?? json.message;
+
+    return truncateForLog(
+      JSON.stringify({
+        error,
+        type: typeof json.error === "object" ? json.error?.type : json.type,
+        code: typeof json.error === "object" ? json.error?.code : json.code,
+      }),
+    );
+  } catch {
+    return truncateForLog(safeText.replace(/\s+/g, " ").trim());
+  }
+}
+
 export async function requestOpenai(req: NextRequest) {
   const controller = new AbortController();
+  const requestId = createRequestId();
+  const startedAt = Date.now();
 
   const isAzure = req.nextUrl.pathname.includes("azure/deployments");
 
@@ -39,9 +115,6 @@ export async function requestOpenai(req: NextRequest) {
   if (baseUrl.endsWith("/")) {
     baseUrl = baseUrl.slice(0, -1);
   }
-
-  console.log("[Proxy] ", path);
-  console.log("[Base Url]", baseUrl);
 
   const timeoutId = setTimeout(
     () => {
@@ -88,8 +161,28 @@ export async function requestOpenai(req: NextRequest) {
     }
   }
 
+  let requestBodyText: string | undefined;
+  if (req.body) {
+    try {
+      requestBodyText = await req.text();
+    } catch (e) {
+      console.error("[OpenAI Proxy Diagnostics] failed to read request body", {
+        requestId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   const fetchUrl = cloudflareAIGatewayUrl(`${baseUrl}/${path}`);
-  console.log("fetchUrl", fetchUrl);
+  const requestMeta = getOpenAIRequestMeta(requestBodyText);
+  console.log("[OpenAI Proxy Diagnostics] request", {
+    requestId,
+    method: req.method,
+    path,
+    upstreamHost: getUpstreamHost(baseUrl),
+    ...requestMeta,
+  });
+
   const fetchOptions: RequestInit = {
     headers: {
       "Content-Type": "application/json",
@@ -100,7 +193,7 @@ export async function requestOpenai(req: NextRequest) {
       }),
     },
     method: req.method,
-    body: req.body,
+    body: requestBodyText ?? req.body,
     // to fix #2485: https://stackoverflow.com/questions/55920957/cloudflare-worker-typeerror-one-time-use-body
     redirect: "manual",
     // @ts-ignore
@@ -109,12 +202,9 @@ export async function requestOpenai(req: NextRequest) {
   };
 
   // #1815 try to refuse gpt4 request
-  if (serverConfig.customModels && req.body) {
+  if (serverConfig.customModels && requestBodyText) {
     try {
-      const clonedBody = await req.text();
-      fetchOptions.body = clonedBody;
-
-      const jsonBody = JSON.parse(clonedBody) as { model?: string };
+      const jsonBody = JSON.parse(requestBodyText) as { model?: string };
 
       // not undefined and is false
       if (
@@ -145,6 +235,14 @@ export async function requestOpenai(req: NextRequest) {
 
   try {
     const res = await fetch(fetchUrl, fetchOptions);
+    const durationMs = Date.now() - startedAt;
+    console.log("[OpenAI Proxy Diagnostics] response", {
+      requestId,
+      status: res.status,
+      statusText: res.statusText,
+      durationMs,
+      contentType: res.headers.get("content-type"),
+    });
 
     // Extract the OpenAI-Organization header from the response
     const openaiOrganizationHeader = res.headers.get("OpenAI-Organization");
@@ -175,11 +273,34 @@ export async function requestOpenai(req: NextRequest) {
     // The browser will try to decode the response with brotli and fail
     newHeaders.delete("content-encoding");
 
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("[OpenAI Proxy Diagnostics] upstream error", {
+        requestId,
+        status: res.status,
+        durationMs,
+        summary: getErrorSummary(errorText),
+      });
+      return new Response(errorText, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: newHeaders,
+      });
+    }
+
     return new Response(res.body, {
       status: res.status,
       statusText: res.statusText,
       headers: newHeaders,
     });
+  } catch (e) {
+    const durationMs = Date.now() - startedAt;
+    console.error("[OpenAI Proxy Diagnostics] fetch failed", {
+      requestId,
+      durationMs,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
