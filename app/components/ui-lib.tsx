@@ -270,9 +270,10 @@ export function Input(props: InputProps) {
 }
 
 export function PasswordInput(
-  props: HTMLProps<HTMLInputElement> & { aria?: string },
+  props: HTMLProps<HTMLInputElement> & { toggleAriaLabel?: string },
 ) {
   const [visible, setVisible] = useState(false);
+  const { toggleAriaLabel, ...inputProps } = props;
   function changeVisibility() {
     setVisible(!visible);
   }
@@ -280,13 +281,13 @@ export function PasswordInput(
   return (
     <div className={"password-input-container"}>
       <IconButton
-        aria={props.aria}
+        aria={toggleAriaLabel ?? props["aria-label"]}
         icon={visible ? <EyeIcon /> : <EyeOffIcon />}
         onClick={changeVisibility}
         className={"password-eye"}
       />
       <input
-        {...props}
+        {...inputProps}
         type={visible ? "text" : "password"}
         className={"password-input"}
       />

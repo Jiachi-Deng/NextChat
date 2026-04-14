@@ -940,7 +940,7 @@ export function Settings() {
         subTitle={Locale.Settings.Access.OpenAI.ApiKey.SubTitle}
       >
         <PasswordInput
-          aria={Locale.Settings.ShowPassword}
+          toggleAriaLabel={Locale.Settings.ShowPassword}
           aria-label={Locale.Settings.Access.OpenAI.ApiKey.Title}
           value={accessStore.openaiApiKey}
           type="text"

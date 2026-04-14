@@ -491,6 +491,9 @@ export const useChatStore = createPersistStore(
               firstTokenLatencyMs = durationMs;
               hasRecordedFirstToken = true;
             }
+            const statusCode = responseRes?.status;
+            const requestSucceeded =
+              responseRes?.ok ?? (!!message && !botMessage.isError);
             if (message) {
               botMessage.content = message;
               botMessage.date = new Date().toLocaleString();
@@ -501,10 +504,10 @@ export const useChatStore = createPersistStore(
               timestamp: Date.now(),
               model: modelConfig.model,
               stream: streamEnabled,
-              success: responseRes.ok,
+              success: requestSucceeded,
               durationMs,
               firstTokenLatencyMs,
-              statusCode: responseRes.status,
+              statusCode,
             });
             ChatControllerPool.remove(session.id, botMessage.id);
           },

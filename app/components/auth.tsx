@@ -65,7 +65,7 @@ export function AuthPage() {
 
       <PasswordInput
         style={{ marginTop: "3vh", marginBottom: "3vh" }}
-        aria={Locale.Settings.ShowPassword}
+        toggleAriaLabel={Locale.Settings.ShowPassword}
         aria-label={Locale.Auth.Input}
         value={accessStore.accessCode}
         type="text"
@@ -82,7 +82,7 @@ export function AuthPage() {
           <div className={styles["auth-tips"]}>{Locale.Auth.SubTips}</div>
           <PasswordInput
             style={{ marginTop: "3vh", marginBottom: "3vh" }}
-            aria={Locale.Settings.ShowPassword}
+            toggleAriaLabel={Locale.Settings.ShowPassword}
             aria-label={Locale.Settings.Access.OpenAI.ApiKey.Placeholder}
             value={accessStore.openaiApiKey}
             type="text"
@@ -95,7 +95,7 @@ export function AuthPage() {
           />
           <PasswordInput
             style={{ marginTop: "3vh", marginBottom: "3vh" }}
-            aria={Locale.Settings.ShowPassword}
+            toggleAriaLabel={Locale.Settings.ShowPassword}
             aria-label={Locale.Settings.Access.Google.ApiKey.Placeholder}
             value={accessStore.googleApiKey}
             type="text"

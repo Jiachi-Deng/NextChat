@@ -116,7 +116,7 @@ export function RealtimeConfigList(props: {
             subTitle={Locale.Settings.Realtime.ApiKey.SubTitle}
           >
             <PasswordInput
-              aria={Locale.Settings.ShowPassword}
+              toggleAriaLabel={Locale.Settings.ShowPassword}
               aria-label={Locale.Settings.Realtime.ApiKey.Title}
               value={props.realtimeConfig.apiKey}
               type="text"
