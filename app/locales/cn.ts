@@ -552,6 +552,10 @@ const cn = {
     },
 
     Model: "模型 (model)",
+    Streaming: {
+      Title: "流式响应",
+      SubTitle: "开启后边生成边显示；关闭后等待完整回复，兼容性更稳",
+    },
     CompressModel: {
       Title: "对话摘要模型",
       SubTitle: "用于压缩历史记录、生成对话标题的模型",

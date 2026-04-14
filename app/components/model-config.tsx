@@ -50,6 +50,21 @@ export function ModelConfigList(props: {
         </Select>
       </ListItem>
       <ListItem
+        title={Locale.Settings.Streaming.Title}
+        subTitle={Locale.Settings.Streaming.SubTitle}
+      >
+        <input
+          aria-label={Locale.Settings.Streaming.Title}
+          type="checkbox"
+          checked={props.modelConfig.enableStreaming ?? true}
+          onChange={(e) =>
+            props.updateConfig(
+              (config) => (config.enableStreaming = e.currentTarget.checked),
+            )
+          }
+        ></input>
+      </ListItem>
+      <ListItem
         title={Locale.Settings.Temperature.Title}
         subTitle={Locale.Settings.Temperature.SubTitle}
       >

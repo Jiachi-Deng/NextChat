@@ -460,7 +460,7 @@ export const useChatStore = createPersistStore(
         // make request
         api.llm.chat({
           messages: sendMessages,
-          config: { ...modelConfig, stream: true },
+          config: { ...modelConfig, stream: modelConfig.enableStreaming ?? true },
           onUpdate(message) {
             botMessage.streaming = true;
             if (message) {
@@ -773,7 +773,7 @@ export const useChatStore = createPersistStore(
             ),
             config: {
               ...modelcfg,
-              stream: true,
+              stream: modelConfig.enableStreaming ?? true,
               model,
               providerName,
             },
@@ -860,7 +860,7 @@ export const useChatStore = createPersistStore(
   },
   {
     name: StoreKey.Chat,
-    version: 3.3,
+    version: 3.4,
     migrate(persistedState, version) {
       const state = persistedState as any;
       const newState = JSON.parse(
@@ -922,6 +922,12 @@ export const useChatStore = createPersistStore(
           const config = useAppConfig.getState();
           s.mask.modelConfig.compressModel = "";
           s.mask.modelConfig.compressProviderName = "";
+        });
+      }
+
+      if (version < 3.4) {
+        newState.sessions.forEach((s) => {
+          s.mask.modelConfig.enableStreaming = true;
         });
       }
 

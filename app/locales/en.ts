@@ -557,6 +557,11 @@ const en: LocaleType = {
     },
 
     Model: "Model",
+    Streaming: {
+      Title: "Streaming Response",
+      SubTitle:
+        "Show text while it is generated; turn off for more stable custom API responses",
+    },
     CompressModel: {
       Title: "Summary Model",
       SubTitle: "Model used to compress history and generate title",
